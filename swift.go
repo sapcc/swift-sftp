@@ -196,16 +196,16 @@ func (s *Swift) initializeAuthClient() error {
 		opts gophercloud.AuthOptions
 	)
 
-	if (s.config.OsUserID != "" || s.config.OsUsername != "") && s.config.OsPassword != "" {
+	if (s.config.OsUsername != "") && s.config.OsPassword != "" {
 		opts = gophercloud.AuthOptions{
 			IdentityEndpoint: s.config.OsIdentityEndpoint,
-			UserID:           s.config.OsUserID,
 			Username:         s.config.OsUsername,
 			Password:         s.config.OsPassword,
-			DomainID:         s.config.OsDomainID,
-			DomainName:       s.config.OsDomainName,
-			TenantID:         s.config.OsTenantID,
-			TenantName:       s.config.OsTenantName,
+			DomainName:       s.config.OsUserDomainName,
+			Scope: &gophercloud.AuthScope{
+				ProjectName: s.config.OsProjectName,
+				DomainName:  s.config.OsProjectDomainName,
+			},
 
 			AllowReauth: true,
 		}

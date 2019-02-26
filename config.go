@@ -41,15 +41,13 @@ type Config struct {
 
 	// Optional parameters for OpenStack
 	// If those are not given, We use environment variables like OS_USERNAME to authenticate the client.
-	OsIdentityEndpoint string `toml:"os_identity_endpoint"`
-	OsUserID           string `toml:"os_user_id"`
-	OsUsername         string `toml:"os_username"`
-	OsPassword         string `toml:"os_password"`
-	OsDomainID         string `toml:"os_domain_id"`
-	OsDomainName       string `toml:"os_domain_name"`
-	OsTenantID         string `toml:"os_tenant_id"`
-	OsTenantName       string `toml:"os_tenant_name"`
-	OsRegion           string `toml:"os_region"`
+	OsIdentityEndpoint  string `toml:"os_identity_endpoint"`
+	OsUsername          string `toml:"os_username"`
+	OsPassword          string `toml:"os_password"`
+	OsUserDomainName    string `toml:"os_user_domain_name"`
+	OsProjectName       string `toml:"os_project_name"`
+	OsProjectDomainName string `toml:"os_project_domain_name"`
+	OsRegion            string `toml:"os_region"`
 }
 
 func (c *Config) LoadFromContext(ctx *cli.Context) error {
