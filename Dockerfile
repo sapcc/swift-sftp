@@ -1,6 +1,6 @@
 FROM golang:alpine AS builder
 
-RUN apk update && apk add --no-cache git make
+RUN apk update && apk add --no-cache git make ca-certificates
 WORKDIR $GOPATH/src/github.com/sapcc/swift-sftp
 
 COPY . .
