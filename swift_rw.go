@@ -160,7 +160,7 @@ func (w *swiftWriter) Begin() (err error) {
 	// Open tmpfile
 	w.tmpfile, err = os.OpenFile(fname, os.O_WRONLY, 0000)
 	if err != nil {
-		w.log.Warnf("Couldn't open tmpfile. [%v]", err.Error())
+		w.log.Error("Couldn't open tmpfile. [%v]", err.Error())
 		return err
 	}
 	return nil
@@ -171,12 +171,14 @@ func (w *swiftWriter) upload() (err error) {
 	w.log.Debugf("Upload: create tmpfile. [%s]", fname)
 	fr, err := os.OpenFile(fname, os.O_RDONLY, 000)
 	if err != nil {
-		w.log.Warnf("%v", err.Error())
+		w.log.Error("%v", err.Error())
 		return err
 	}
 	defer fr.Close()
 
-	return w.swift.Put(w.sf.Name(), fr)
+	//return w.swift.Put(w.sf.Name(), fr)
+	obj := w.swift.getContainer().Object(w.sf.Abs())
+	return obj.Upload(fr, nil, nil)
 }
 
 func (w *swiftWriter) WriteAt(p []byte, off int64) (n int, err error) {

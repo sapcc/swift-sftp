@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/containers"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
 	"github.com/gophercloud/gophercloud/pagination"
+	"github.com/majewsky/schwift"
+	"github.com/majewsky/schwift/gopherschwift"
 )
 
 type Swift struct {
@@ -17,7 +20,8 @@ type Swift struct {
 	authClient *gophercloud.ProviderClient
 
 	// Need to be exported
-	SwiftClient *gophercloud.ServiceClient
+	SwiftClient   *gophercloud.ServiceClient
+	SchwiftClient *schwift.Account
 }
 
 func NewSwift(c Config) *Swift {
@@ -35,6 +39,12 @@ func (s *Swift) Init() (err error) {
 	if err != nil {
 		return err
 	}
+
+	s.SchwiftClient, err = gopherschwift.Wrap(s.SwiftClient, nil)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -56,30 +66,16 @@ func (s *Swift) ListContainer() (list []containers.Container, err error) {
 	return list, nil
 }
 
+func (s *Swift) getContainer() *schwift.Container {
+	return s.SchwiftClient.Container(s.config.Container)
+}
+
 func (s *Swift) ExistsContainer() (exists bool, err error) {
-	err = containers.List(s.SwiftClient, containers.ListOpts{}).EachPage(func(p pagination.Page) (bool, error) {
-		names, err := containers.ExtractNames(p)
-		if err != nil {
-			return false, err
-		}
-
-		for _, name := range names {
-			log.Debugf("Container found [name=%s]", name)
-			if name == s.config.Container {
-				exists = true
-				return false, nil
-			}
-		}
-
-		return true, nil
-	})
-
-	return exists, err
+	return s.getContainer().Exists()
 }
 
 func (s *Swift) CreateContainer() (err error) {
-	rs := containers.Create(s.SwiftClient, s.config.Container, containers.CreateOpts{})
-	return rs.Err
+	return s.getContainer().Create(nil)
 }
 
 func (s *Swift) DeleteContainer() (err error) {
@@ -100,6 +96,16 @@ func (s *Swift) DeleteContainer() (err error) {
 	return rs.Err
 }
 
+func (s *Swift) CreateDirectory(path string) (err error) {
+	obj := s.getContainer().Object(path)
+	hdr := schwift.NewObjectHeaders()
+	hdr.ContentType().Set("application/directory")
+	opts := hdr.ToOpts() //type *schwift.RequestOptions
+
+	buffer := ""
+	return obj.Upload(bytes.NewReader([]byte(buffer)), nil, opts)
+}
+
 func (s *Swift) List() (ls []objects.Object, err error) {
 	ls = make([]objects.Object, 0, 10)
 	err = objects.List(s.SwiftClient, s.config.Container, objects.ListOpts{
@@ -117,6 +123,14 @@ func (s *Swift) List() (ls []objects.Object, err error) {
 
 func (s *Swift) Get(name string) (header *objects.GetHeader, err error) {
 	return objects.Get(s.SwiftClient, s.config.Container, name, objects.GetOpts{}).Extract()
+}
+
+func (s *Swift) GetFuzzy(name string) (header *objects.GetHeader, err error) {
+	obj, err := s.Get(name)
+	if err != nil {
+		return s.Get(name + "/")
+	}
+	return obj, err
 }
 
 func (s *Swift) Download(name string) (content io.ReadCloser, size int64, err error) {
@@ -162,7 +176,7 @@ func (s *Swift) Put(name string, content io.Reader) error {
 }
 
 func (s *Swift) Delete(name string) (err error) {
-	return objects.Delete(s.SwiftClient, s.config.Container, name, objects.DeleteOpts{}).Err
+	return s.getContainer().Object(name).Delete(nil, nil)
 }
 
 func (s *Swift) Rename(oldName, newName string) (err error) {

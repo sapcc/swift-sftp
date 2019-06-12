@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -164,8 +166,15 @@ func (fs *SwiftFS) Filecmd(r *sftp.Request) error {
 			return sftp.ErrSshFxNoSuchFile
 		}
 
-		err = fs.swift.Delete(f.Name())
+		err = fs.swift.Delete(f.Abs())
 		if err != nil {
+			fs.log.Warnf("%s %s", r.Filepath, err.Error())
+			return sftp.ErrSshFxFailure
+		}
+
+	case "Mkdir":
+		fs.log.Infof("Creating directory %s ...", r.Filepath)
+		if err := fs.swift.CreateDirectory(r.Filepath[1:] + "/"); err != nil {
 			fs.log.Warnf("%s %s", r.Filepath, err.Error())
 			return sftp.ErrSshFxFailure
 		}
@@ -252,7 +261,7 @@ func (fs *SwiftFS) lookup(path string) (*SwiftFile, error) {
 	}
 
 	name := fs.filepath2object(path)
-	header, err := fs.swift.Get(name)
+	header, err := fs.swift.GetFuzzy(name)
 	if err != nil {
 		return nil, err
 	}
@@ -279,11 +288,18 @@ func (fs *SwiftFS) allFiles() ([]*SwiftFile, error) {
 
 	files := make([]*SwiftFile, len(objs))
 	for i, obj := range objs {
+		isDir := strings.HasSuffix(obj.Name, "/")
+		var objName string
+		if isDir {
+			objName = filepath.Clean(obj.Name)
+		} else {
+			objName = obj.Name
+		}
 		files[i] = &SwiftFile{
-			objectname: obj.Name,
+			objectname: objName,
 			size:       obj.Bytes,
 			modtime:    obj.LastModified,
-			isdir:      false,
+			isdir:      isDir,
 		}
 	}
 	return files, nil

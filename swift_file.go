@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -19,7 +20,11 @@ type SwiftFile struct {
 }
 
 func (f *SwiftFile) Abs() string {
-	return f.Dir() + f.objectname
+	return f.Dir() + f.Name()
+}
+
+func (f *SwiftFile) DirName() string {
+	return filepath.Dir(f.objectname)
 }
 
 func (f *SwiftFile) Dir() string {
