@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
@@ -78,6 +80,10 @@ func (s *Swift) CreateContainer() (err error) {
 	return s.getContainer().Create(nil)
 }
 
+func (s *Swift) GetObject(path string) *schwift.Object {
+	return s.getContainer().Object(path)
+}
+
 func (s *Swift) DeleteContainer() (err error) {
 	ls, err := s.List()
 	if err != nil {
@@ -106,6 +112,51 @@ func (s *Swift) CreateDirectory(path string) (err error) {
 	return obj.Upload(bytes.NewReader([]byte(buffer)), nil, opts)
 }
 
+func (fs *Swift) GetFileInfo(f schwift.ObjectInfo) *SwiftFile {
+	var name string
+	if f.Object == nil {
+		name = "/" + f.SubDirectory
+	} else {
+		name = "/" + f.Object.Name()
+	}
+
+	file := &SwiftFile{
+		name:    name,
+		size:    int64(f.SizeBytes),
+		modtime: f.LastModified,
+		symlink: "",
+	}
+	return file
+}
+
+func (fs *Swift) GetFileInfos(files []schwift.ObjectInfo) []os.FileInfo {
+	list := make([]os.FileInfo, 0, len(files))
+	for _, f := range files {
+		list = append(list, fs.GetFileInfo(f))
+	}
+	return list
+}
+
+func (s *Swift) ListDirectory(path string) ([]schwift.ObjectInfo, error) {
+	iter := s.getContainer().Objects()
+	if path != "" {
+		// Directories in swift end always with /
+		if !strings.HasSuffix(path, "/") {
+			path += "/"
+		}
+		iter.Prefix = path
+	}
+	iter.Delimiter = "/"
+	ls := make([]schwift.ObjectInfo, 0)
+	err := iter.ForeachDetailed(func(oi schwift.ObjectInfo) error {
+		if oi.Object == nil || oi.Object.Name() != path {
+			ls = append(ls, oi)
+		}
+		return nil
+	})
+	return ls, err
+}
+
 func (s *Swift) List() (ls []objects.Object, err error) {
 	ls = make([]objects.Object, 0, 10)
 	err = objects.List(s.SwiftClient, s.config.Container, objects.ListOpts{
@@ -123,14 +174,6 @@ func (s *Swift) List() (ls []objects.Object, err error) {
 
 func (s *Swift) Get(name string) (header *objects.GetHeader, err error) {
 	return objects.Get(s.SwiftClient, s.config.Container, name, objects.GetOpts{}).Extract()
-}
-
-func (s *Swift) GetFuzzy(name string) (header *objects.GetHeader, err error) {
-	obj, err := s.Get(name)
-	if err != nil {
-		return s.Get(name + "/")
-	}
-	return obj, err
 }
 
 func (s *Swift) Download(name string) (content io.ReadCloser, size int64, err error) {

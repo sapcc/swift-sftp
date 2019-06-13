@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -95,11 +96,10 @@ func (fs *SwiftFS) Filewrite(r *sftp.Request) (io.WriterAt, error) {
 	fs.log.Infof("%s %s", r.Method, r.Filepath)
 
 	f := &SwiftFile{
-		objectname: r.Filepath[1:], // strip slash
-		size:       0,
-		modtime:    time.Now(),
-		symlink:    "",
-		isdir:      false,
+		name:    r.Filepath[1:], // strip slash
+		size:    0,
+		modtime: time.Now(),
+		symlink: "",
 	}
 
 	writer := &swiftWriter{
@@ -109,7 +109,7 @@ func (fs *SwiftFS) Filewrite(r *sftp.Request) (io.WriterAt, error) {
 		timeout: time.Duration(fs.swift.config.SwiftTimeout) * time.Second,
 		afterClosed: func(w *swiftWriter) {
 			if w.uploadErr != nil {
-				fs.log.Infof("Faild to transfer '%s' [%s]", f.Name(), w.uploadErr)
+				fs.log.Infof("Failed to transfer '%s' [%s]", f.Name(), w.uploadErr)
 			} else {
 				fs.log.Infof("'%s' was successfully transferred", f.Name())
 			}
@@ -147,14 +147,13 @@ func (fs *SwiftFS) Filecmd(r *sftp.Request) error {
 		}
 
 		tf := SwiftFile{
-			objectname: r.Target,
+			name: r.Target,
 		}
 		target := &SwiftFile{
-			objectname: tf.Name(),
-			size:       0,
-			modtime:    time.Now(),
-			symlink:    "",
-			isdir:      false,
+			name:    tf.Name(),
+			size:    0,
+			modtime: time.Now(),
+			symlink: "",
 		}
 
 		return fs.swift.Rename(f.Name(), target.Name())
@@ -194,58 +193,39 @@ func (fs *SwiftFS) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 
 	switch r.Method {
 	case "List":
-		files, err := fs.walk(r.Filepath)
+		files, err := fs.swift.ListDirectory(fs.filepath2object(r.Filepath))
 		if err != nil {
 			fs.log.Warnf("%s %s", r.Filepath, err.Error())
 			return nil, sftp.ErrSshFxFailure
 		}
-
-		list := make([]os.FileInfo, 0, len(files))
-		for _, f := range files {
-			list = append(list, f)
-		}
-		return listerat(list), nil
-
+		ret := fs.swift.GetFileInfos(files)
+		return listerat(ret), nil
 	case "Stat":
-		f, err := fs.lookup(r.Filepath)
+		// Check for xyz and xyz/
+		subdir := fs.filepath2object(path.Dir(r.Filepath))
+		files, err := fs.swift.ListDirectory(subdir)
 		if err != nil {
-			fs.log.Warnf("%s %s", r.Filepath, err.Error())
-			return nil, sftp.ErrSshFxNoSuchFile
-		}
-		if f != nil {
-			return listerat([]os.FileInfo{f}), nil
-		} else {
-			return listerat([]os.FileInfo{}), nil
+			fs.log.Warnf("%s %s", subdir, err.Error())
+			return nil, sftp.ErrSshFxFailure
 		}
 
-	default:
-		fs.log.Warnf("Unsupported operation [method=%s, target=%s]", r.Method, r.Target)
-		return nil, sftp.ErrSshFxOpUnsupported
+		for _, f := range files {
+			fileInfo := fs.swift.GetFileInfo(f)
+			if r.Filepath == fileInfo.Abs() {
+				return listerat([]os.FileInfo{fileInfo}), nil
+			}
+		}
+		return nil, os.ErrNotExist
 	}
-	return nil, nil
+
+	return nil, sftp.ErrSshFxFailure
 }
 
 func (fs *SwiftFS) filepath2object(path string) string {
-	return path[1:]
+	return strings.TrimPrefix(path, "/")
 }
 func (fs *SwiftFS) object2filepath(name string) string {
 	return Delimiter + name
-}
-
-// Return SwiftFile objects in the specific directory
-func (fs *SwiftFS) walk(dirname string) ([]*SwiftFile, error) {
-	files, err := fs.allFiles()
-	if err != nil {
-		return nil, err
-	}
-
-	list := make([]*SwiftFile, 0, len(files))
-	for _, f := range files {
-		if f.Abs() != dirname && f.Dir() == dirname {
-			list = append(list, f)
-		}
-	}
-	return list, nil
 }
 
 // Return SwiftFile object with the path
@@ -253,27 +233,26 @@ func (fs *SwiftFS) lookup(path string) (*SwiftFile, error) {
 	// root path is not on the object storage and return it manually.
 	if path == "/" {
 		f := &SwiftFile{
-			objectname: "",
-			modtime:    time.Now(),
-			isdir:      true,
+			name:    "/",
+			modtime: time.Now(),
 		}
 		return f, nil
 	}
 
 	name := fs.filepath2object(path)
-	header, err := fs.swift.GetFuzzy(name)
+	header, err := fs.swift.Get(name)
 	if err != nil {
 		return nil, err
 	}
 
 	f := &SwiftFile{
-		objectname: name,
-		size:       header.ContentLength,
-		modtime:    header.LastModified,
-		symlink:    "",
-		isdir:      false,
+		name:    name,
+		size:    header.ContentLength,
+		modtime: header.LastModified,
+		symlink: "",
 	}
 	return f, nil
+
 }
 
 // To synchronize objects on object storage and fs.files
@@ -296,10 +275,9 @@ func (fs *SwiftFS) allFiles() ([]*SwiftFile, error) {
 			objName = obj.Name
 		}
 		files[i] = &SwiftFile{
-			objectname: objName,
-			size:       obj.Bytes,
-			modtime:    obj.LastModified,
-			isdir:      isDir,
+			name:    objName,
+			size:    obj.Bytes,
+			modtime: obj.LastModified,
 		}
 	}
 	return files, nil
