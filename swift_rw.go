@@ -8,9 +8,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/majewsky/schwift"
 	"github.com/sirupsen/logrus"
 )
 
@@ -176,9 +178,14 @@ func (w *swiftWriter) upload() (err error) {
 	}
 	defer fr.Close()
 
-	//return w.swift.Put(w.sf.Name(), fr)
 	obj := w.swift.getContainer().Object(w.sf.Abs())
-	return obj.Upload(fr, nil, nil)
+	hdr := schwift.NewObjectHeaders()
+	if w.swift.config.SwiftExpire > 0 {
+		hdr.Set("X-Delete-After", strconv.Itoa(w.swift.config.SwiftExpire))
+	}
+	opts := hdr.ToOpts() //type *schwift.RequestOptions
+
+	return obj.Upload(fr, nil, opts)
 }
 
 func (w *swiftWriter) WriteAt(p []byte, off int64) (n int, err error) {

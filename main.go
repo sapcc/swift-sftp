@@ -72,6 +72,11 @@ func main() {
 					Usage: "Set timeout for Swift (sec).",
 					Value: 180,
 				},
+				cli.IntFlag{
+					Name:  "swift-expire",
+					Usage: "Set experation for uploaded objects",
+					Value: 0,
+				},
 			},
 
 			HideHelp: true,
@@ -115,6 +120,20 @@ func main() {
 					Usage:     "delete container",
 					ArgsUsage: "[container]",
 					Action:    deleteContainer,
+				},
+				cli.Command{
+					Name:      "cleanup",
+					ShortName: "p",
+					Usage:     "cleanup container",
+					ArgsUsage: "[container]",
+					Action:    cleanupContainer,
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:  "config-file,f",
+							Usage: "Set configuration file",
+							Value: "",
+						},
+					},
 				},
 			},
 		},

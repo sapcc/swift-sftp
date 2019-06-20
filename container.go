@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/urfave/cli"
 )
+
+const CleanupFilesOlderThanDays = 14
 
 func listContainer(ctx *cli.Context) (err error) {
 	c := Config{}
@@ -134,5 +137,42 @@ func deleteContainer(ctx *cli.Context) (err error) {
 	}
 
 	log.Infof("Container '%s' deleted", c.Container)
+	return nil
+}
+
+func cleanupContainer(ctx *cli.Context) (err error) {
+	c := Config{}
+	if ctx.String("config-file") != "" {
+		if err = c.LoadFromFile(ctx.String("config-file")); err != nil {
+			return err
+		}
+	} else {
+		if err = c.LoadFromContext(ctx); err != nil {
+			return err
+		}
+	}
+
+	if ctx.NArg() == 0 {
+		return errors.New("Container name required")
+	}
+	c.Container = ctx.Args()[0]
+
+	s := NewSwift(c)
+	if err = s.Init(); err != nil {
+		return err
+	}
+
+	now := time.Now()
+	log.Info("Current Time: %s", now)
+
+	ls, err := s.List()
+	if err != nil {
+		return err
+	}
+	for _, obj := range ls {
+		log.Info(obj.Name, obj.LastModified)
+	}
+
+	log.Infof("Container '%s' cleanuped", c.Container)
 	return nil
 }

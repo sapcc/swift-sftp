@@ -38,6 +38,7 @@ type Config struct {
 
 	// Timeout for downloading and uploading (sec)
 	SwiftTimeout int `toml:"swift_timeout"`
+	SwiftExpire  int `toml:"swift_expire"`
 
 	// Optional parameters for OpenStack
 	// If those are not given, We use environment variables like OS_USERNAME to authenticate the client.
@@ -58,6 +59,7 @@ func (c *Config) LoadFromContext(ctx *cli.Context) error {
 	c.AuthorizedKeysPath = ctx.String("authorized-keys")
 	c.CreateContainerIfNotExists = ctx.Bool("create-container")
 	c.SwiftTimeout = ctx.Int("swift-timeout")
+	c.SwiftExpire = ctx.Int("swift-expire")
 
 	return nil
 }
