@@ -110,6 +110,9 @@ func initServer(conf Config) (sConf *ssh.ServerConfig, err error) {
 		PublicKeyCallback: authPkey(conf),
 	}
 
+	if os.Getenv("USERNAME") != "" && os.Getenv("PASSWORD") != "" {
+		sConf.PasswordCallback = envAuthPassword()
+	}
 	// Add password authentication method if password file exists
 	s, err := os.Stat(conf.PasswordFilePath)
 	if err == nil && !s.IsDir() {
@@ -158,6 +161,22 @@ func authPkey(conf Config) func(c ssh.ConnMetadata, pkey ssh.PublicKey) (*ssh.Pe
 			}, nil
 		}
 		return nil, fmt.Errorf("unknown public key for %q", c.User())
+	}
+}
+
+func envAuthPassword() func(c ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+
+	return func(c ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+		listUser := os.Getenv("USERNAME")
+		listPass := os.Getenv("PASSWORD")
+
+		userMatch := strings.Compare(listUser, c.User())
+		if subtle.ConstantTimeCompare([]byte(listPass), password) == 1 && userMatch == 0 {
+			// authorized
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("password rejected for %q", c.User())
 	}
 }
 
