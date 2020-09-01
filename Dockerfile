@@ -6,7 +6,7 @@ WORKDIR $GOPATH/src/github.com/sapcc/swift-sftp
 COPY . .
 RUN make setup && make linux
 
-FROM scratch
+FROM busybox
 LABEL source_repository="https://github.com/sapcc/swift-sftp"
 ENV PATH=/bin
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
