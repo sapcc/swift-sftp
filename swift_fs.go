@@ -201,6 +201,17 @@ func (fs *SwiftFS) Filelist(r *sftp.Request) (sftp.ListerAt, error) {
 		ret := fs.swift.GetFileInfos(files)
 		return listerat(ret), nil
 	case "Stat":
+		// root path is not on the object storage and return it manually.
+		if r.Filepath == "/" {
+			fakeRoot := []os.FileInfo{
+				&SwiftFile{
+					name:    "/",
+					modtime: time.Now(),
+				},
+			}
+			return listerat(fakeRoot), nil
+		}
+
 		// Check for xyz and xyz/
 		subdir := fs.filepath2object(path.Dir(r.Filepath))
 		files, err := fs.swift.ListDirectory(subdir)
@@ -247,8 +258,8 @@ func (fs *SwiftFS) lookup(path string) (*SwiftFile, error) {
 
 	f := &SwiftFile{
 		name:    name,
-		size:    header.ContentLength,
-		modtime: header.LastModified,
+		size:    int64(header.SizeBytes().Get()),
+		modtime: header.UpdatedAt().Get(),
 		symlink: "",
 	}
 	return f, nil
@@ -267,17 +278,21 @@ func (fs *SwiftFS) allFiles() ([]*SwiftFile, error) {
 
 	files := make([]*SwiftFile, len(objs))
 	for i, obj := range objs {
-		isDir := strings.HasSuffix(obj.Name, "/")
+		isDir := strings.HasSuffix(obj.Name(), "/")
 		var objName string
 		if isDir {
-			objName = filepath.Clean(obj.Name)
+			objName = filepath.Clean(obj.Name())
 		} else {
-			objName = obj.Name
+			objName = obj.Name()
+		}
+		headers, err := obj.Headers()
+		if err != nil {
+			return nil, err
 		}
 		files[i] = &SwiftFile{
 			name:    objName,
-			size:    obj.Bytes,
-			modtime: obj.LastModified,
+			size:    int64(headers.SizeBytes().Get()),
+			modtime: headers.UpdatedAt().Get(),
 		}
 	}
 	return files, nil

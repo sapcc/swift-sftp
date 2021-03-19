@@ -10,9 +10,6 @@ import (
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
-	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/containers"
-	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
-	"github.com/gophercloud/gophercloud/pagination"
 	"github.com/majewsky/schwift"
 	"github.com/majewsky/schwift/gopherschwift"
 )
@@ -22,7 +19,6 @@ type Swift struct {
 	authClient *gophercloud.ProviderClient
 
 	// Need to be exported
-	SwiftClient   *gophercloud.ServiceClient
 	SchwiftClient *schwift.Account
 }
 
@@ -37,35 +33,17 @@ func (s *Swift) Init() (err error) {
 		return err
 	}
 
-	s.SwiftClient, err = s.getObjectStorageClient()
+	swiftClient, err := s.getObjectStorageClient()
 	if err != nil {
 		return err
 	}
 
-	s.SchwiftClient, err = gopherschwift.Wrap(s.SwiftClient, nil)
+	s.SchwiftClient, err = gopherschwift.Wrap(swiftClient, nil)
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func (s *Swift) ListContainer() (list []containers.Container, err error) {
-	opts := containers.ListOpts{
-		Full: true,
-	}
-
-	list = make([]containers.Container, 0, 10)
-	containers.List(s.SwiftClient, opts).EachPage(func(page pagination.Page) (bool, error) {
-		cs, err := containers.ExtractInfo(page)
-		if err != nil {
-			return false, err
-		}
-		list = append(list, cs...)
-		return true, nil
-	})
-
-	return list, nil
 }
 
 func (s *Swift) getContainer() *schwift.Container {
@@ -82,24 +60,6 @@ func (s *Swift) CreateContainer() (err error) {
 
 func (s *Swift) GetObject(path string) *schwift.Object {
 	return s.getContainer().Object(path)
-}
-
-func (s *Swift) DeleteContainer() (err error) {
-	ls, err := s.List()
-	if err != nil {
-		return err
-	}
-
-	// Recursive deletion for all objects in the container
-	for _, obj := range ls {
-		drs := objects.Delete(s.SwiftClient, s.config.Container, obj.Name, objects.DeleteOpts{})
-		if drs.Err != nil {
-			return drs.Err
-		}
-	}
-
-	rs := containers.Delete(s.SwiftClient, s.config.Container)
-	return rs.Err
 }
 
 func (s *Swift) CreateDirectory(path string) (err error) {
@@ -157,80 +117,45 @@ func (s *Swift) ListDirectory(path string) ([]schwift.ObjectInfo, error) {
 	return ls, err
 }
 
-func (s *Swift) List() (ls []objects.Object, err error) {
-	ls = make([]objects.Object, 0, 10)
-	err = objects.List(s.SwiftClient, s.config.Container, objects.ListOpts{
-		Full: true,
-	}).EachPage(func(p pagination.Page) (bool, error) {
-		ls, err = objects.ExtractInfo(p)
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	})
-
-	return ls, err
+func (s *Swift) List() ([]*schwift.Object, error) {
+	return s.getContainer().Objects().Collect()
 }
 
-func (s *Swift) Get(name string) (header *objects.GetHeader, err error) {
-	return objects.Get(s.SwiftClient, s.config.Container, name, objects.GetOpts{}).Extract()
+func (s *Swift) Get(name string) (schwift.ObjectHeaders, error) {
+	return s.getContainer().Object(name).Headers()
 }
 
 func (s *Swift) Download(name string) (content io.ReadCloser, size int64, err error) {
-	rs := objects.Download(s.SwiftClient, s.config.Container, name, objects.DownloadOpts{})
-	if rs.Err != nil {
-		return nil, 0, rs.Err
-	}
-
-	info, err := rs.Extract()
+	o := s.getContainer().Object(name)
+	hs, err := o.Headers()
 	if err != nil {
 		return nil, 0, err
 	}
 
-	return rs.Body, info.ContentLength, nil
+	rs, err := o.Download(nil).AsReadCloser()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return rs, int64(hs.SizeBytes().Get()), nil
 }
 
 func (s *Swift) Put(name string, content io.Reader) error {
-	// temporary object name
-	tmpname := "tmp_" + name
-
-	// delete a temporary file from container
-	defer func() {
-		objects.Delete(s.SwiftClient, s.config.Container, tmpname, objects.DeleteOpts{})
-	}()
-
-	cOpts := objects.CreateOpts{
-		Content: content,
-	}
-	rCreate := objects.Create(s.SwiftClient, s.config.Container, tmpname, cOpts)
-	if rCreate.Err != nil {
-		return rCreate.Err
-	}
-
-	dest := fmt.Sprintf("%s%s%s", s.config.Container, Delimiter, name)
-	rCopy := objects.Copy(s.SwiftClient, s.config.Container, tmpname, objects.CopyOpts{
-		Destination: dest,
-	})
-	if rCopy.Err != nil {
-		return rCopy.Err
-	}
-
-	return nil
+	return s.getContainer().Object(name).Upload(content, nil, nil)
 }
 
-func (s *Swift) Delete(name string) (err error) {
+func (s *Swift) Delete(name string) error {
 	return s.getContainer().Object(name).Delete(nil, nil)
 }
 
-func (s *Swift) Rename(oldName, newName string) (err error) {
+func (s *Swift) Rename(oldName, newName string) error {
 	dest := fmt.Sprintf("%s%s%s", s.config.Container, Delimiter, newName)
-	rCopy := objects.Copy(s.SwiftClient, s.config.Container, oldName, objects.CopyOpts{
-		Destination: dest,
-	})
-	if rCopy.Err != nil {
-		return rCopy.Err
-	}
+	oldObject := s.getContainer().Object(oldName)
+	newObject := s.getContainer().Object(dest)
 
+	if err := oldObject.CopyTo(newObject, nil, nil); err != nil {
+		return err
+	}
 	return s.Delete(oldName)
 }
 

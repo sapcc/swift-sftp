@@ -96,47 +96,6 @@ func main() {
 				},
 			},
 		},
-		cli.Command{
-			Name:      "container",
-			ShortName: "c",
-			Usage:     "Manage containers",
-			Subcommands: []cli.Command{
-				cli.Command{
-					Name:      "list",
-					ShortName: "l",
-					Usage:     "List containers",
-					Action:    listContainer,
-				},
-				cli.Command{
-					Name:      "create",
-					ShortName: "c",
-					Usage:     "create container",
-					ArgsUsage: "[container]",
-					Action:    createContainer,
-				},
-				cli.Command{
-					Name:      "delete",
-					ShortName: "d",
-					Usage:     "delete container",
-					ArgsUsage: "[container]",
-					Action:    deleteContainer,
-				},
-				cli.Command{
-					Name:      "cleanup",
-					ShortName: "p",
-					Usage:     "cleanup container",
-					ArgsUsage: "[container]",
-					Action:    cleanupContainer,
-					Flags: []cli.Flag{
-						cli.StringFlag{
-							Name:  "config-file,f",
-							Usage: "Set configuration file",
-							Value: "",
-						},
-					},
-				},
-			},
-		},
 	}
 
 	// default logger

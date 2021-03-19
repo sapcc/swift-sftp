@@ -42,7 +42,7 @@ func (r *swiftReader) Begin() (err error) {
 	if err != nil {
 		return err
 	}
-	r.downloadSize = headers.ContentLength
+	r.downloadSize = int64(headers.SizeBytes().Get())
 	if r.downloadSize == 0 {
 		return fmt.Errorf("Couldn't detect download size (Missing Content-length header).")
 	}
