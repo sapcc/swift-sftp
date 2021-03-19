@@ -5,6 +5,9 @@ VERSION=$(shell cat -e VERSION)
 
 all: clean windows darwin linux
 
+setup:
+	@echo "No setup needed anymore"
+
 windows:
 	GOOS=$@ GOARCH=$(GOARCH) CGO_ENABLED=0 go build $(GOFLAGS) -ldflags "-X main.version=$(VERSION)" -o $(BINDIR)/$@/$(NAME)-$(VERSION)/$(NAME).exe
 	cp misc/swift-sftp.conf bin/$@
