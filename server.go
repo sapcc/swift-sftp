@@ -186,14 +186,22 @@ func authPassword(conf Config) func(c ssh.ConnMetadata, password []byte) (*ssh.P
 				return nil, err
 			}
 
-
+			var listUser, listPass, listContainer []byte
 			parts := bytes.SplitN(line, []byte(":"), 3)
-			if len(parts) != 3 {
+			if len(parts) == 2 {
+				listUser = parts[0]
+				listContainer = parts[1]
+				listPass = []byte(os.Getenv("PASSWORD"))
+				if len(listPass) == 0 {
+					return nil, fmt.Errorf("Password could not derived from config file nor environment.")
+				}
+			} else if len(parts) == 3 {
+				listUser = parts[0]
+				listContainer = parts[1]
+				listPass = parts[2]
+			} else {
 				return nil, fmt.Errorf("failed parsing config file")
 			}
-			listUser := parts[0]
-			listContainer := parts[1]
-			listPass := parts[2]
 
 			pwMatch := subtle.ConstantTimeCompare(listPass, password)
 			if subtle.ConstantTimeCompare(listUser, []byte(c.User())) == 1 && pwMatch == 1 {
