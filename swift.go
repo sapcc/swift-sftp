@@ -155,7 +155,7 @@ func (s *Swift) Delete(name string) error {
 }
 
 func (s *Swift) Rename(oldName, newName string) error {
-	dest := fmt.Sprintf("%s%s%s", s.config.Container, Delimiter, newName)
+	dest := fmt.Sprintf("%s%s%s", s.container, Delimiter, newName)
 	oldObject := s.getContainer().Object(oldName)
 	newObject := s.getContainer().Object(dest)
 

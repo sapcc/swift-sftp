@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -33,9 +32,6 @@ type Config struct {
 	ServerKeyPath      string `toml:"server_key"`
 	AuthorizedKeysPath string `toml:"authorized_keys"`
 
-	// Container name
-	Container string `toml:"container"`
-
 	// Timeout for downloading and uploading (sec)
 	SwiftTimeout int `toml:"swift_timeout"`
 	SwiftExpire  int `toml:"swift_expire"`
@@ -53,7 +49,6 @@ type Config struct {
 
 func (c *Config) LoadFromContext(ctx *cli.Context) error {
 	c.BindAddress = ctx.String("address")
-	c.Container = ctx.String("container")
 	c.PasswordFilePath = ctx.String("password-file")
 	c.ServerKeyPath = ctx.String("server-key")
 	c.AuthorizedKeysPath = ctx.String("authorized-keys")
@@ -74,11 +69,6 @@ func (c *Config) LoadFromFile(filename string) error {
 }
 
 func (c *Config) Init() (err error) {
-	// container
-	if c.Container == "" {
-		return errors.New("Parameter 'container' required")
-	}
-
 	// All paths in a configuration must be absolute path.
 	if c.ServerKeyPath != "" {
 		path := c.ServerKeyPath

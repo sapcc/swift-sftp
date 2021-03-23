@@ -238,10 +238,10 @@ func handleClient(conf Config, sConf *ssh.ServerConfig, swift *Swift, nConn net.
 			if err = swift.CreateContainer(); err != nil {
 				return fmt.Errorf("Couldn't create container. [%s]", err)
 			}
-			log.Infof("Create container '%s'", conf.Container)
+			log.Infof("Create container '%s'", container)
 
 		} else {
-			return fmt.Errorf("Container '%s' does not exist.", conf.Container)
+			return fmt.Errorf("Container '%s' does not exist.", container)
 		}
 	}
 
