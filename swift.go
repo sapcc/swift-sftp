@@ -16,6 +16,7 @@ import (
 
 type Swift struct {
 	config     Config
+	container  string
 	authClient *gophercloud.ProviderClient
 
 	// Need to be exported
@@ -46,8 +47,13 @@ func (s *Swift) Init() (err error) {
 	return nil
 }
 
+func (s *Swift) setContainer(container string) {
+	s.container = container
+}
+
+
 func (s *Swift) getContainer() *schwift.Container {
-	return s.SchwiftClient.Container(s.config.Container)
+	return s.SchwiftClient.Container(s.container)
 }
 
 func (s *Swift) ExistsContainer() (exists bool, err error) {

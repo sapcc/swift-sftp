@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/subtle"
 	"fmt"
 	"io"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -28,25 +28,7 @@ func StartServer(conf Config) error {
 	if err = swift.Init(); err != nil {
 		return err
 	}
-
-	exists, err := swift.ExistsContainer()
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		if conf.CreateContainerIfNotExists {
-			if err = swift.CreateContainer(); err != nil {
-				return fmt.Errorf("Couldn't create container. [%s]", err)
-			}
-			log.Infof("Create container '%s'", conf.Container)
-
-		} else {
-			return fmt.Errorf("Container '%s' does not exist.", conf.Container)
-		}
-	}
-
-	log.Infof("Use container '%s%s'", swift.SchwiftClient.Backend().EndpointURL(), conf.Container)
+	log.Infof("Use Swift backend '%s'", swift.SchwiftClient.Backend().EndpointURL())
 
 	// Start server
 	listener, err := net.Listen("tcp", conf.BindAddress)
@@ -169,11 +151,15 @@ func envAuthPassword() func(c ssh.ConnMetadata, password []byte) (*ssh.Permissio
 	return func(c ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 		listUser := os.Getenv("USERNAME")
 		listPass := os.Getenv("PASSWORD")
+		listContainer := os.Getenv("CONTAINER")
 
+		if listContainer == "" {
+			return nil, fmt.Errorf("$CONTAINER env not specificed")
+		}
 		userMatch := strings.Compare(listUser, c.User())
 		if subtle.ConstantTimeCompare([]byte(listPass), password) == 1 && userMatch == 0 {
 			// authorized
-			return nil, nil
+			return &ssh.Permissions{Extensions: map[string]string{"swift-sftp-container": listContainer}}, nil
 		}
 
 		return nil, fmt.Errorf("password rejected for %q", c.User())
@@ -183,6 +169,7 @@ func envAuthPassword() func(c ssh.ConnMetadata, password []byte) (*ssh.Permissio
 func authPassword(conf Config) func(c ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 
 	return func(c ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+
 		f, err := os.Open(conf.PasswordFilePath)
 		if err != nil {
 			return nil, err
@@ -199,33 +186,24 @@ func authPassword(conf Config) func(c ssh.ConnMetadata, password []byte) (*ssh.P
 				return nil, err
 			}
 
-			var listUser []byte
-			var listPass []byte
-			for i := 0; i < len(line); i++ {
-				if line[i] == ':' {
-					listUser = line[:i]
-					listPass = line[i+1:]
-					break
-				}
-			}
 
-			pwMatch := comparePasswords(listPass, password)
-			if subtle.ConstantTimeCompare(listUser, []byte(c.User())) == 1 && pwMatch == nil {
+			parts := bytes.SplitN(line, []byte(":"), 3)
+			if len(parts) != 3 {
+				return nil, fmt.Errorf("failed parsing config file")
+			}
+			listUser := parts[0]
+			listContainer := parts[1]
+			listPass := parts[2]
+
+			pwMatch := subtle.ConstantTimeCompare(listPass, password)
+			if subtle.ConstantTimeCompare(listUser, []byte(c.User())) == 1 && pwMatch == 1 {
 				// authorized
-				return nil, nil
+				return &ssh.Permissions{Extensions: map[string]string{"swift-sftp-container": string(listContainer)}}, nil
 			}
 		}
 
 		return nil, fmt.Errorf("password rejected for %q", c.User())
 	}
-}
-
-func generateHashedPassword(username string, plainPassword []byte) (hashed []byte, err error) {
-	return bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.DefaultCost)
-}
-
-func comparePasswords(hashedPassword, plainPassword []byte) error {
-	return bcrypt.CompareHashAndPassword(hashedPassword, plainPassword)
 }
 
 func handleClient(conf Config, sConf *ssh.ServerConfig, swift *Swift, nConn net.Conn) error {
@@ -247,7 +225,28 @@ func handleClient(conf Config, sConf *ssh.ServerConfig, swift *Swift, nConn net.
 		"client": client,
 	})
 
-	clog.Infof("Session opened for %s@%s", client.Username, client.RemoteAddr)
+	container := conn.Permissions.Extensions["swift-sftp-container"]
+
+	swift.setContainer(container)
+	exists, err := swift.ExistsContainer()
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		if conf.CreateContainerIfNotExists {
+			if err = swift.CreateContainer(); err != nil {
+				return fmt.Errorf("Couldn't create container. [%s]", err)
+			}
+			log.Infof("Create container '%s'", conf.Container)
+
+		} else {
+			return fmt.Errorf("Container '%s' does not exist.", conf.Container)
+		}
+	}
+
+	clog.Infof("Session %s@%s opened for %s%s", client.Username, client.RemoteAddr,
+		swift.SchwiftClient.Backend().EndpointURL(), container)
 
 	go ssh.DiscardRequests(reqs)
 
