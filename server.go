@@ -200,7 +200,7 @@ func authPassword(conf Config) func(c ssh.ConnMetadata, password []byte) (*ssh.P
 				listContainer = parts[1]
 				listPass = parts[2]
 			} else {
-				return nil, fmt.Errorf("failed parsing config file")
+				continue
 			}
 
 			pwMatch := subtle.ConstantTimeCompare(listPass, password)
