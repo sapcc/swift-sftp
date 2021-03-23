@@ -1,14 +1,10 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"syscall"
-
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
-	"golang.org/x/crypto/ssh/terminal"
+	"os"
 )
 
 var (
@@ -82,20 +78,6 @@ func main() {
 			HideHelp: true,
 			Action:   server,
 		},
-
-		cli.Command{
-			Name:      "gen-password-hash",
-			ShortName: "g",
-			Usage:     "Generate password hash",
-			Action:    genPassword,
-			ArgsUsage: "[username]",
-			Flags: []cli.Flag{
-				cli.BoolFlag{
-					Name:  "format,f",
-					Usage: "Output in password-file format. (If not provided, print only password)",
-				},
-			},
-		},
 	}
 
 	// default logger
@@ -139,33 +121,4 @@ func server(ctx *cli.Context) (err error) {
 	log.Infof("Starting SFTP server")
 
 	return StartServer(c)
-}
-
-func genPassword(c *cli.Context) (err error) {
-	if c.NArg() != 1 {
-		return errors.New("Parameter 'username' required")
-	}
-	username := c.Args()[0]
-
-	fmt.Fprintf(os.Stderr, "Password: ")
-	password, err := terminal.ReadPassword(int(syscall.Stdin))
-	if err != nil {
-		return err
-	} else if len(password) == 0 {
-		return nil
-	}
-	fmt.Println()
-
-	hashed, err := generateHashedPassword(username, password)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("format") {
-		fmt.Fprintf(os.Stdout, "%s:%s", username, hashed)
-	} else {
-		fmt.Fprintf(os.Stdout, "%s", hashed)
-	}
-	fmt.Println()
-	return nil
 }
